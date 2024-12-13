@@ -4,7 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 
-const bot = new Telegraf("YOUR_KEY");
+const bot = new Telegraf("7712342926:AAG5uYFW1STJENJqMzz3uh-TN7TPBL6EmJ4");
 
 const users = {};
 
