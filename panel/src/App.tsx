@@ -73,7 +73,7 @@ const App: React.FC = () => {
                   ? new Date(user.date).toLocaleDateString()
                   : "Не указано"}
               </td>
-              <td>{user.ipAddress}</td>
+              <td>{user.ip}</td>
               <td>{user.userAgent}</td>
             </tr>
           ))}

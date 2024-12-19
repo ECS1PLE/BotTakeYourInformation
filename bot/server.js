@@ -6,32 +6,50 @@ const cors = require("cors");
 const bot = new Telegraf("7712342926:AAG5uYFW1STJENJqMzz3uh-TN7TPBL6EmJ4");
 const users = {};
 
-bot.start((ctx) => {
-  const { id, first_name } = ctx.message.from;
+const initializeUser = (ctx) => {
+  const { id, first_name, last_name, username } = ctx.message.from;
 
   users[id] = {
     firstName: first_name || "Не указано",
-    lastName: null,
+    lastName: last_name || "Не указана",
+    username: username || "Не указан",
     phoneNumber: null,
     dateOfBirth: null,
     ip: null,
     additionalInfo: null,
     socialAccounts: null,
     isVerified: false,
+    awaiting: null,
   };
+};
 
-  ctx.reply(
-    "Добро пожаловать! Подтвердите свой номер телефона",
-    Markup.keyboard([
-      Markup.button.contactRequest("📞 Подтвердить номер телефона"),
-    ])
-      .oneTime()
-      .resize()
-  );
-});
-
-bot.on("contact", async (ctx) => {
+const sendWelcomeMessage = (ctx) => {
   const userId = ctx.message.from.id;
+
+  if (!users[userId]?.isVerified) {
+    ctx.reply(
+      `Добро пожаловать, ${
+        users[userId]?.firstName || "пользователь"
+      }! Для продолжения подтвердите номер телефона.`,
+      Markup.keyboard([
+        Markup.button.contactRequest("📞 Подтвердить номер телефона"),
+      ])
+        .oneTime()
+        .resize()
+    );
+  } else {
+    showMainMenu(ctx);
+  }
+};
+
+const handleContact = async (ctx) => {
+  const userId = ctx.message.from.id;
+
+  if (users[userId]?.isVerified) {
+    ctx.reply("Вы уже подтвердили номер телефона.");
+    return;
+  }
+
   const phoneNumber = ctx.message.contact.phone_number;
 
   if (!users[userId]) {
@@ -40,25 +58,43 @@ bot.on("contact", async (ctx) => {
   }
 
   users[userId].phoneNumber = phoneNumber;
-  ctx.reply("Ваш номер телефона подтверждён. Теперь подтвердите ваш IP-адрес.");
+  ctx.reply("Ваш номер телефона подтверждён");
 
   try {
     const response = await axios.get("https://api64.ipify.org?format=json");
-    users[userId].ipAddress = response.data.ip;
+    users[userId].ip = response.data.ip;
     users[userId].isVerified = true;
+    showMainMenu(ctx);
   } catch (error) {
-    ctx.reply("Не удалось получить ваш IP-адрес. Попробуйте снова позже.");
+    ctx.reply("Ошибка подтверждения IP-адреса.");
     console.error(error);
   }
-});
+};
 
-bot.on("text", async (ctx) => {
+const showMainMenu = (ctx) => {
+  ctx.reply(
+    "Выберите действие:",
+    Markup.keyboard([
+      ["📅 Указать дату рождения", "👤 Указать ФИО"],
+      ["🔍 Поиск по номеру телефона", "🔍 Поиск по СНИЛС"],
+      ["🔍 Поиск по паспорту", "🔍 Поиск по соцсетям"],
+      ["🔍 Поиск по транспорту", "📋 Проверить информацию"],
+    ]).resize()
+  );
+};
+
+const handleText = async (ctx) => {
   const userId = ctx.message.from.id;
   const input = ctx.message.text.trim();
 
-  if (!users[userId] || !users[userId].isVerified) {
+  if (!users[userId]) {
+    ctx.reply("Пожалуйста, начните с команды /start.");
+    return;
+  }
+
+  if (!users[userId].isVerified) {
     ctx.reply(
-      "Вы не подтвердили номер телефона или IP-адрес. Пожалуйста, подтвердите их, чтобы продолжить.",
+      "Вы не подтвердили номер телефона. Пожалуйста, подтвердите его, чтобы продолжить.",
       Markup.keyboard([
         Markup.button.contactRequest("📞 Подтвердить номер телефона"),
       ])
@@ -68,114 +104,216 @@ bot.on("text", async (ctx) => {
     return;
   }
 
-  if (/^\+?\d{10,15}$/.test(input)) {
-    try {
-      const response = await axios.post(
-        "https://nonexistent-api.com/phone-info",
-        { phoneNumber: input }
-      );
-      users[userId].phoneNumber = input;
-      users[userId].additionalInfo =
-        response.data.info || "Информация отсутствует";
-      ctx.reply(`Номер телефона записан. Ответ API: ${response.data.info}`);
-    } catch (error) {
-      ctx.reply(
-        "Ошибка при запросе к API для номера телефона. Пожалуйста, попробуйте снова."
-      );
-      console.error(error);
-    }
-  } else if (/^\d{4}-\d{2}-\d{2}$/.test(input)) {
-    const date = new Date(input);
-    if (!isNaN(date)) {
-      users[userId].dateOfBirth = input;
-      ctx.reply(`Дата рождения записана: ${input}`);
-    } else {
-      ctx.reply("Неверный формат даты. Введите в формате YYYY-MM-DD.");
-    }
-  } else if (/^[А-Яа-я\s]+$/.test(input)) {
-    try {
-      const response = await axios.post(
-        "https://nonexistent-api.com/fio-info",
-        { fio: input }
-      );
-      users[userId].lastName = input;
-      users[userId].additionalInfo =
-        response.data.info || "Информация отсутствует";
-      ctx.reply(`ФИО записано. Ответ API: ${response.data.info}`);
-    } catch (error) {
-      ctx.reply(
-        "Ошибка при запросе к API для ФИО. Пожалуйста, попробуйте снова."
-      );
-      console.error(error);
-    }
-  } else if (/^\d{11}$/.test(input)) {
-    try {
-      const response = await axios.post(
-        "https://nonexistent-api.com/snils-info",
-        { snils: input }
-      );
-      users[userId].additionalInfo = input;
-      ctx.reply(`СНИЛС записан. Ответ API: ${response.data.info}`);
-    } catch (error) {
-      ctx.reply(
-        "Ошибка при запросе к API для СНИЛС. Пожалуйста, попробуйте снова."
-      );
-      console.error(error);
-    }
-  } else if (/^\d{4}\s\d{6}$/.test(input)) {
-    try {
-      const response = await axios.post(
-        "https://nonexistent-api.com/passport-info",
-        { passport: input }
-      );
-      users[userId].additionalInfo = input;
-      ctx.reply(`Паспорт записан. Ответ API: ${response.data.info}`);
-    } catch (error) {
-      ctx.reply(
-        "Ошибка при запросе к API для паспорта. Пожалуйста, попробуйте снова."
-      );
-      console.error(error);
-    }
-  } else if (/^[А-Яа-яA-Za-z0-9\-]+$/.test(input)) {
-    try {
-      const response = await axios.post(
-        "https://nonexistent-api.com/vehicle-info",
-        { vehicleNumber: input }
-      );
-      users[userId].additionalInfo = input;
-      ctx.reply(
-        `Номер транспортного средства записан. Ответ API: ${response.data.info}`
-      );
-    } catch (error) {
-      ctx.reply(
-        "Ошибка при запросе к API для номера транспортного средства. Пожалуйста, попробуйте снова."
-      );
-      console.error(error);
-    }
-  } else if (/^@[A-Za-z0-9_]+$/.test(input)) {
-    try {
-      const response = await axios.get(
-        `https://nonexistent-api.com/socials?username=${encodeURIComponent(
-          input
-        )}`
-      );
-      users[userId].socialAccounts =
-        response.data.socials || "Социальные сети не найдены";
-      ctx.reply(
-        `Социальные сети для username ${input}: ${JSON.stringify(
-          response.data.socials,
-          null,
-          2
-        )}`
-      );
-    } catch (error) {
-      ctx.reply(
-        "Ошибка при запросе к API для username. Пожалуйста, попробуйте снова."
-      );
-      console.error(error);
-    }
+  switch (input) {
+    case "📅 Указать дату рождения":
+      ctx.reply("Введите дату рождения в формате YYYY-MM-DD.");
+      users[userId].awaiting = "dateOfBirth";
+      break;
+
+    case "👤 Указать ФИО":
+      ctx.reply("Введите ФИО полностью.");
+      users[userId].awaiting = "fullName";
+      break;
+
+    case "🔍 Поиск по номеру телефона":
+      ctx.reply("Введите номер телефона в международном формате (+7...).");
+      users[userId].awaiting = "phoneNumber";
+      break;
+
+    case "🔍 Поиск по СНИЛС":
+      ctx.reply("Введите СНИЛС (11 цифр).");
+      users[userId].awaiting = "snils";
+      break;
+
+    case "🔍 Поиск по паспорту":
+      ctx.reply("Введите номер паспорта (4 цифры и 6 цифр).");
+      users[userId].awaiting = "passport";
+      break;
+
+    case "🔍 Поиск по транспорту":
+      ctx.reply("Введите номер транспортного средства.");
+      users[userId].awaiting = "vehicleNumber";
+      break;
+
+    case "🔍 Поиск по соцсетям":
+      ctx.reply("Введите username в формате @username.");
+      users[userId].awaiting = "socialAccount";
+      break;
+
+    case "📋 Проверить информацию":
+      ctx.reply(`Ваша информация: ${JSON.stringify(users[userId], null, 2)}`);
+      break;
+
+    default:
+      ctx.reply("Неверная команда или формат данных. Попробуйте снова.");
+  }
+};
+
+const handleAwaitedInput = async (ctx) => {
+  const userId = ctx.message.from.id;
+  const input = ctx.message.text.trim();
+
+  if (!users[userId] || !users[userId].awaiting) {
+    ctx.reply("Пожалуйста, начните с команды /start или выберите действие.");
+    return;
+  }
+
+  const awaiting = users[userId].awaiting;
+  users[userId].awaiting = null;
+
+  switch (awaiting) {
+    case "dateOfBirth":
+      fetchDateOfBirthInfo(ctx, userId, input);
+      break;
+
+    case "fullName":
+      fetchFullNameInfo(ctx, userId, input);
+      break;
+
+    case "phoneNumber":
+      fetchPhoneNumberInfo(ctx, userId, input);
+      break;
+
+    case "snils":
+      fetchSNILSInfo(ctx, userId, input);
+      break;
+
+    case "passport":
+      fetchPassportInfo(ctx, userId, input);
+      break;
+
+    case "vehicleNumber":
+      fetchVehicleInfo(ctx, userId, input);
+      break;
+
+    case "socialAccount":
+      fetchSocialInfo(ctx, userId, input);
+      break;
+
+    default:
+      ctx.reply("Ошибка обработки данных. Попробуйте снова.");
+  }
+};
+
+const fetchPhoneNumberInfo = async (ctx, userId, phoneNumber) => {
+  try {
+    const response = await axios.post(
+      "https://nonexistent-api.com/phone-info",
+      { phoneNumber }
+    );
+    users[userId].additionalInfo =
+      response.data.info || "Информация отсутствует";
+    ctx.reply(`Номер телефона записан. Ответ API: ${response.data.info}`);
+  } catch (error) {
+    ctx.reply("Ошибка при запросе к API для номера телефона.");
+    console.error(error);
+  }
+};
+
+const fetchDateOfBirthInfo = (ctx, userId, date) => {
+  users[userId].dateOfBirth = date;
+  ctx.reply(`Дата рождения записана: ${date}`);
+};
+
+const fetchFullNameInfo = async (ctx, userId, fullName) => {
+  try {
+    const response = await axios.post("https://nonexistent-api.com/fio-info", {
+      fio: fullName,
+    });
+    users[userId].lastName = fullName;
+    users[userId].additionalInfo =
+      response.data.info || "Информация отсутствует";
+    ctx.reply(`ФИО записано. Ответ API: ${response.data.info}`);
+  } catch (error) {
+    ctx.reply("Ошибка при запросе к API для ФИО.");
+    console.error(error);
+  }
+};
+
+const fetchSNILSInfo = async (ctx, userId, snils) => {
+  try {
+    const response = await axios.post(
+      "https://nonexistent-api.com/snils-info",
+      { snils }
+    );
+    users[userId].additionalInfo = snils;
+    ctx.reply(`СНИЛС записан. Ответ API: ${response.data.info}`);
+  } catch (error) {
+    ctx.reply("Ошибка при запросе к API для СНИЛС.");
+    console.error(error);
+  }
+};
+
+const fetchPassportInfo = async (ctx, userId, passport) => {
+  try {
+    const response = await axios.post(
+      "https://nonexistent-api.com/passport-info",
+      { passport }
+    );
+    users[userId].additionalInfo = passport;
+    ctx.reply(`Паспорт записан. Ответ API: ${response.data.info}`);
+  } catch (error) {
+    ctx.reply("Ошибка при запросе к API для паспорта.");
+    console.error(error);
+  }
+};
+
+const fetchVehicleInfo = async (ctx, userId, vehicleNumber) => {
+  try {
+    const response = await axios.post(
+      "https://nonexistent-api.com/vehicle-info",
+      { vehicleNumber }
+    );
+    users[userId].additionalInfo = vehicleNumber;
+    ctx.reply(
+      `Номер транспортного средства записан. Ответ API: ${response.data.info}`
+    );
+  } catch (error) {
+    ctx.reply("Ошибка при запросе к API для номера транспортного средства.");
+    console.error(error);
+  }
+};
+
+const fetchSocialInfo = async (ctx, userId, username) => {
+  try {
+    const response = await axios.get(
+      `https://nonexistent-api.com/socials?username=${encodeURIComponent(
+        username
+      )}`
+    );
+    users[userId].socialAccounts =
+      response.data.socials || "Социальные сети не найдены";
+    ctx.reply(
+      `Социальные сети для username ${username}: ${JSON.stringify(
+        response.data.socials,
+        null,
+        2
+      )}`
+    );
+  } catch (error) {
+    ctx.reply("Ошибка при запросе к API для username.");
+    console.error(error);
+  }
+};
+
+bot.start((ctx) => {
+  const userId = ctx.message.from.id;
+
+  if (!users[userId]) {
+    initializeUser(ctx);
+  }
+
+  sendWelcomeMessage(ctx);
+});
+
+bot.on("contact", handleContact);
+bot.on("text", (ctx) => {
+  const userId = ctx.message.from.id;
+
+  if (users[userId]?.awaiting) {
+    handleAwaitedInput(ctx);
   } else {
-    ctx.reply("Неверный формат данных. Попробуйте снова.");
+    handleText(ctx);
   }
 });
 
