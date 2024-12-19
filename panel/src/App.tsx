@@ -3,13 +3,14 @@ import axios from "axios";
 
 interface User {
   id: string;
-  firstName: string; // Новые данные
+  firstName: string;
   lastName: string;
   username: string;
   date: string;
   ip: string;
   userAgent: string;
   phoneNumber: string;
+  ipAddress: string;
 }
 
 const App: React.FC = () => {
@@ -72,7 +73,7 @@ const App: React.FC = () => {
                   ? new Date(user.date).toLocaleDateString()
                   : "Не указано"}
               </td>
-              <td>{user.ip}</td>
+              <td>{user.ipAddress}</td>
               <td>{user.userAgent}</td>
             </tr>
           ))}
