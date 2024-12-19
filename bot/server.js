@@ -61,7 +61,9 @@ const handleContact = async (ctx) => {
   ctx.reply("Ваш номер телефона подтверждён");
 
   try {
-    const response = await axios.get("https://api64.ipify.org?format=json");
+    const response = await axios.post("http://localhost:3001/api/user-ip", {
+      userId,
+    });
     users[userId].ip = response.data.ip;
     users[userId].isVerified = true;
     showMainMenu(ctx);
@@ -322,6 +324,22 @@ const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
+
+app.post("/api/user-ip", (req, res) => {
+  const { userId } = req.body;
+
+  if (!userId || !users[userId]) {
+    return res
+      .status(400)
+      .json({ error: "Неверный запрос или пользователь не найден." });
+  }
+
+  const userIp =
+    req.ip || req.headers["x-forwarded-for"] || req.connection.remoteAddress;
+  users[userId].ip = userIp;
+
+  res.json({ success: true, ip: userIp });
+});
 
 app.get("/api/users", (req, res) => {
   const usersData = Object.keys(users).map((userId) => ({
